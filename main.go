@@ -248,7 +248,7 @@ func setScore(dispNum int, score int) {
 
 	//copy the score into the display array
 	for i, num := range scoreArr {
-		_disp[dispNum][len(_disp[dispNum])-len(scoreArr)+i] = num
+		_disp[dispNum][i] = num
 	}
 }
 
@@ -260,7 +260,7 @@ func numToArray(number int) ([]byte, error) {
 
 	for {
 		remainder = tmpScore % 10
-		scoreArr = append([]byte{byte(remainder)}, scoreArr...)
+		scoreArr = append(scoreArr, byte(remainder))
 		tmpScore /= 10
 
 		if tmpScore == 0 {
@@ -273,8 +273,18 @@ func numToArray(number int) ([]byte, error) {
 
 func printDisplays() {
 	for i, val := range _disp {
-		fmt.Printf("Display %d: ", i)
+		fmt.Printf("Display Array %d: ", i)
 		fmt.Println(val)
+	}
+
+	fmt.Println("Displays as shown:")
+	for i, d := range _disp {
+		fmt.Printf("Disp #%d: ", i+1)
+		for digit := len(d) - 1; digit >= 0; digit-- {
+			fmt.Printf("%d ", d[digit])
+		}
+
+		fmt.Print("\n")
 	}
 }
 

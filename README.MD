@@ -50,3 +50,7 @@ Alowed Digits (based on 74ls48 datasheet):
 13 = c +  _ (top display c with a _ at the bottom)
 14 = t
 15 = blank
+
+Digits that are stored in the array are Least Siginificant Digit to Most Significant Digit
+Thus array[0] = 1's digit, array[1] = 10's digit etc.
+
