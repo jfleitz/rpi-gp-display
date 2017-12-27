@@ -49,8 +49,33 @@ Alowed Digits (based on 74ls48 datasheet):
 12 = u (on the top of the display)
 13 = c +  _ (top display c with a _ at the bottom)
 14 = t
-15 = blank
+15 = blank (nothing displayed)
 
-Digits that are stored in the array are Least Siginificant Digit to Most Significant Digit
-Thus array[0] = 1's digit, array[1] = 10's digit etc.
 
+
+Use of serial buffering:
+74HC595: Pin 14 = serial data in
+Pin 11 = shcp clock data in (every serial bit in, latches into the register )
+Pin 12 = stcp clock data out (latch on the outputs )
+
+We are going to daisy chain the 595s, so we send 24 bits every time before stcp / latch out
+
+
+74HC595 for digit control (first in chain - pin 4 on rasp pi to pin 14 on 595)
+74HC595 for clock control (second in chain - pin 9 to pin 14)
+74HC595 for data control (third in chain - pin 9 to pin 14)
+
+
+3333 3333 2222 2222 1111 1111
+SND- DATA	 CLOCK-	 -DIGITS-
+
+
+SND = Sound board control (when ready)
+
+
+From https://github.com/google/periph/blob/master/host/rpi/rpi.go
+
+P1_13 gpio.PinIO = bcm283x.GPIO27 // Low,  <<--Data In - pin 14 on lsb 595
+P1_14 pin.Pin    = pin.GROUND     //
+P1_15 gpio.PinIO = bcm283x.GPIO22 // Low, <<--Clock Data - pin 11 on '595s
+P1_16 gpio.PinIO = bcm283x.GPIO23 // Low, <<--Latch Data - pin 12 on '595s

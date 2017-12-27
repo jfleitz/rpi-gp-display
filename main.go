@@ -86,19 +86,46 @@ P1_16 gpio.PinIO = bcm283x.GPIO23 // Low, <<--Latch Data - pin 12 on '595s
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"periph.io/x/periph/conn/gpio"
+	"periph.io/x/periph/host"
 	"periph.io/x/periph/host/rpi"
 )
 
 var _disp [5][7]byte //this holds what we want to show on the display. Bytes are in terms of what the 74ls48 supports (0x0f is blank)
-const blank byte = 0x0f
-const blankScore = -1
-const creditMatchDisp = 4
+
+const (
+	blank           byte = 0x0f //what is sent to the 7448 on the display board to blank the 7 seg disp
+	blankScore           = -1   //the numeric number that can be passed in as an integer to clear the display
+	creditMatchDisp      = 4    //the number in the display array for the credit display
+	creditLSD            = 6    //position in the display array for the 1's credit disp digit
+	creditMSD            = 0    //position in the display array for the 10's credit disp digit
+
+	pinDataClk  = 15
+	pinLatchClk = 16
+)
+
+//const blank byte = 0x0f
+//const blankScore = -1
+//const creditMatchDisp = 4
+
+var endLoop bool
 
 func main() {
-	initDisplays()
+	clearDisplays()
+
+	if !rpi.Present() {
+		fmt.Println("Not running on a raspberry pi. Debug information is displayed only")
+		mainDebug()
+		return
+	}
+
+	mainRPI()
+}
+
+func mainDebug() {
 	printDisplays()
 
 	fmt.Println("Setting player 1 = 1234, player 2 = 7654321, player 3 = 1234567, player 4 = 9080706, match = 8877 ")
@@ -107,7 +134,6 @@ func main() {
 	setScore(1, 7654321)
 	setScore(2, 1234567)
 	setScore(3, 9080706)
-	setScore(4, 8877)
 
 	printDisplays()
 
@@ -121,21 +147,32 @@ func main() {
 	setBallInPlay(3)
 
 	printDisplays()
-	/*if _, err := host.Init(); err != nil {
+}
+func mainRPI() {
+	endLoop = false
+
+	if _, err := host.Init(); err != nil {
 		log.Fatal(err)
 	}
+	initPorts()
 
-	//go runDisplays()
-	*/
-	//test the displays out
+	go runDisplays()
 
-	/*for l := gpio.Low; ; l = !l {
-		// Lookup a pin by its location on the board:
-		if err := rpi.P1_33.Out(l); err != nil {
-			log.Fatal(err)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}*/
+	//throwing out some test data
+	setScore(0, 7654321)
+	setScore(1, 7654321)
+	setScore(2, 7654321)
+	setScore(3, 7654321)
+
+	setCredits(21)
+	setBallInPlay(43)
+
+	printDisplays()
+
+	time.Sleep(10 * time.Second)
+	clearDisplays()
+	endLoop = true
+	time.Sleep(1 * time.Second)
 }
 
 func initPorts() {
@@ -145,7 +182,7 @@ func initPorts() {
 
 }
 
-func initDisplays() {
+func clearDisplays() {
 	for i := 0; i < len(_disp); i++ {
 		blankDisplay(i)
 	}
@@ -158,7 +195,7 @@ func dspOut(digits byte, clock byte, data byte) {
 	shiftOut(data)
 	shiftOut(clock)
 	shiftOut(digits)
-	pulse(16)
+	pulse(pinLatchClk) //latch output of shift registers
 }
 
 //shifOut sends value "val" passed in to the '595 and latches the output
@@ -168,33 +205,33 @@ func shiftOut(val byte) {
 
 	a = 0x80 //msb first
 
-	for b := 1; b < 8; b++ {
+	for b := 1; b <= 8; b++ {
 		if val&a > 0 {
 			rpi.P1_13.Out(gpio.High)
 		} else {
 			rpi.P1_13.Out(gpio.Low)
 		}
 
-		pulse(15)
+		pulse(pinDataClk) //pulse clock line
 		a >>= 1
 	}
 }
 
 func pulse(pin int) {
 	switch pin {
-	case 15:
+	case pinDataClk:
 		rpi.P1_15.Out(gpio.High)
-	case 16:
+	case pinLatchClk:
 		rpi.P1_16.Out(gpio.High)
 	}
 
 	//delay here
-	time.Sleep(1 * time.Microsecond) //this should be enough for a HC595 I think?
+	//time.Sleep(1 * time.Microsecond) //this should be enough for a HC595 I think?
 
 	switch pin {
-	case 15:
+	case pinDataClk:
 		rpi.P1_15.Out(gpio.Low)
-	case 16:
+	case pinLatchClk:
 		rpi.P1_16.Out(gpio.Low)
 	}
 }
@@ -209,21 +246,29 @@ For each digit:
 func runDisplays() {
 
 	var digit, display, data, digitStrobe byte
-	digitStrobe = 0
 
 	for {
+		digitStrobe = 0x01
+		//data = 0x06
+
 		for digit = 0; digit < 7; digit++ {
-			for display = 1; display < 4; display++ {
+			var clkOut byte = 0x01
+			for display = 0; display < 4; display++ {
 				data = _disp[display][digit]
-				dspOut(digitStrobe, display, data)
+
+				dspOut(0, clkOut, data)
+				clkOut <<= 1
 			}
 
 			//strobing the digit here, which is why we took it out of the other for loop
-			digitStrobe = digit
-			data = _disp[4][digit]
-			dspOut(digitStrobe, display, data)
+			data = _disp[creditMatchDisp][digit]
+			dspOut(digitStrobe, clkOut, data)
+			digitStrobe <<= 1                  //shifting over for the next digit
+			time.Sleep(100 * time.Microsecond) //230 ms should be 120hz to the displays?
+		}
 
-			time.Sleep(230 * time.Microsecond) //230 ms should be 120hz to the displays?
+		if endLoop {
+			break
 		}
 
 		//loop forever
@@ -238,18 +283,6 @@ func setDisplay(dispNum int, digits []byte) {
 
 func blankDisplay(dispNum int) {
 	_disp[dispNum] = [...]byte{blank, blank, blank, blank, blank, blank, blank} //initialize to blank disp
-}
-
-//assumption is 7 digit display, so we will blank all remaining digits the score passed in didn't set
-func setScore(dispNum int, score int) {
-	scoreArr, _ := numToArray(score)
-
-	_disp[dispNum] = [...]byte{blank, blank, blank, blank, blank, blank, blank} //initialize to blank disp
-
-	//copy the score into the display array
-	for i, num := range scoreArr {
-		_disp[dispNum][i] = num
-	}
 }
 
 func numToArray(number int) ([]byte, error) {
@@ -271,6 +304,74 @@ func numToArray(number int) ([]byte, error) {
 	return scoreArr, nil
 }
 
+//assumption is 7 digit display, so we will blank all remaining digits the score passed in didn't set
+func setScore(dispNum int, score int) {
+	scoreArr, _ := numToArray(score)
+
+	_disp[dispNum] = [...]byte{blank, blank, blank, blank, blank, blank, blank} //initialize to blank disp
+
+	//copy the score into the display array
+	for i, num := range scoreArr {
+		_disp[dispNum][i] = num
+	}
+}
+
+//pretty sure match and ball in play are the same display (digits 4 and 3), Credit is 0 and 6
+func setBallInPlay(ball int) {
+	ballDisp := _disp[creditMatchDisp][3:5]
+	if ball == blankScore {
+		ballDisp[0] = blank
+		ballDisp[1] = blank
+		return
+	}
+
+	ballArr, _ := numToArray(ball)
+
+	if len(ballArr) == 2 {
+		ballDisp[0] = ballArr[0]
+		ballDisp[1] = ballArr[1]
+	} else {
+		ballDisp[0] = ballArr[0]
+		ballDisp[1] = blank
+	}
+}
+
+//for some reason GamePlan uses digit 6 and 0
+func setCredits(credit int) {
+
+	if credit == blankScore {
+		_disp[creditMatchDisp][creditMSD] = blank
+		_disp[creditMatchDisp][creditLSD] = blank
+		return
+	}
+
+	creditArr, _ := numToArray(credit)
+
+	if len(creditArr) == 2 {
+		_disp[creditMatchDisp][creditLSD] = creditArr[0]
+		_disp[creditMatchDisp][creditMSD] = creditArr[1]
+	} else {
+		_disp[creditMatchDisp][creditLSD] = creditArr[0]
+		_disp[creditMatchDisp][creditMSD] = blank
+	}
+}
+
+//loops all digits through the displays
+func dispDiagnostics() {
+
+	clearDisplays()
+
+	cnt := 1111111
+
+	for i := 1; i < 10; i++ {
+		for dsp := 1; dsp < 5; dsp++ {
+			setScore(dsp, cnt)
+		}
+		cnt += 1111111
+		time.Sleep(1000 * time.Millisecond)
+	}
+}
+
 func printDisplays() {
 	for i, val := range _disp {
 		fmt.Printf("Display Array %d: ", i)
@@ -285,45 +386,5 @@ func printDisplays() {
 		}
 
 		fmt.Print("\n")
-	}
-}
-
-//pretty sure match and ball in play are the same display (digits 1 and 2), Credit is 5 and 6
-func setBallInPlay(ball int) {
-	ballDisp := _disp[creditMatchDisp][5:7]
-	if ball == blankScore {
-		ballDisp[0] = blank
-		ballDisp[1] = blank
-		return
-	}
-
-	ballArr, _ := numToArray(ball)
-
-	if len(ballArr) == 2 {
-		ballDisp[0] = ballArr[0]
-		ballDisp[1] = ballArr[1]
-	} else {
-		ballDisp[1] = ballArr[0]
-		ballDisp[0] = blank
-	}
-}
-
-func setCredits(credit int) {
-	creditDisp := _disp[creditMatchDisp][1:3]
-
-	if credit == blankScore {
-		creditDisp[0] = blank
-		creditDisp[1] = blank
-		return
-	}
-
-	creditArr, _ := numToArray(credit)
-
-	if len(creditArr) == 2 {
-		creditDisp[0] = creditArr[0]
-		creditDisp[1] = creditArr[1]
-	} else {
-		creditDisp[0] = creditArr[0]
-		creditDisp[1] = blank
 	}
 }
