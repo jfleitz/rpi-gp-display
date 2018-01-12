@@ -73,6 +73,24 @@ SND- DATA	 CLOCK-	 -DIGITS-
 
 
 SND = Sound board control (when ready)
+Sounds for Bossy:
+0 = High tone (maybe a puck bouncing ? ?) - maybe have this when you hit a lighted puck
+1 = Star spangled banner - after warmup period
+2 = up then down tone - like crowd doing the wave? (maybe on ball launch have this?)
+3 = icing / asteroids fire -- pop bumpers and sling shots (defense)
+4 = reset
+5 = whistle, up and down tone, and asteroids icing (end of game)
+6 = n/a
+7 = whistle only - ball drain, and 2 for ball launch?
+8 = low tones (bouncing ball..) - outlanes?
+9 = high tones (bouncing ball) ?? - when we are moving the lit puck to a new place
+10 = nothing
+11 = puck bounce (10 pt shot)
+12 = ra ra , ra-ra-ra, ra ra, ra-ra-ra (when you set up for a line shot)
+13 = charge - (add player / credit)
+14 = nothing
+15 = nothing
+
 
 
 From https://github.com/google/periph/blob/master/host/rpi/rpi.go
@@ -85,6 +103,7 @@ P1_16 gpio.PinIO = bcm283x.GPIO23 // Low, <<--Latch Data - pin 12 on '595s
 */
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -95,6 +114,7 @@ import (
 )
 
 var _disp [5][7]byte //this holds what we want to show on the display. Bytes are in terms of what the 74ls48 supports (0x0f is blank)
+var _sound byte
 
 const (
 	blank           byte = 0x0f //what is sent to the 7448 on the display board to blank the 7 seg disp
@@ -115,6 +135,12 @@ var endLoop bool
 
 func main() {
 	clearDisplays()
+	var play int
+
+	flag.IntVar(&play, "snd", 0x0f, "Pass the number of the sound to play")
+	flag.Parse()
+
+	_sound = byte(play)
 
 	if !rpi.Present() {
 		fmt.Println("Not running on a raspberry pi. Debug information is displayed only")
@@ -169,10 +195,19 @@ func mainRPI() {
 
 	printDisplays()
 
-	time.Sleep(10 * time.Second)
-	clearDisplays()
-	endLoop = true
+	time.Sleep(20 * time.Millisecond)
+	if _sound != 0x0f {
+		_sound = 0x0f
+		endLoop = true
+		time.Sleep(20 * time.Millisecond)
+		return
+	}
+
 	time.Sleep(1 * time.Second)
+	clearDisplays()
+	_sound = 0x0f
+	endLoop = true
+	time.Sleep(500 * time.Millisecond)
 }
 
 func initPorts() {
@@ -191,8 +226,9 @@ func clearDisplays() {
 //dspOut, sends all of the bytes out for controlling the displays
 //Data needs to be first followed by clock followed by digits
 //MSB needs to be sent first as well
-func dspOut(digits byte, clock byte, data byte) {
-	shiftOut(data)
+func dspOut(digits byte, clock byte, dspData byte, sndData byte) {
+	thirdReg := sndData<<4 | dspData&0x0f //no need to mask the dsp data really, but just in case
+	shiftOut(thirdReg)
 	shiftOut(clock)
 	shiftOut(digits)
 	pulse(pinLatchClk) //latch output of shift registers
@@ -256,13 +292,13 @@ func runDisplays() {
 			for display = 0; display < 4; display++ {
 				data = _disp[display][digit]
 
-				dspOut(0, clkOut, data)
+				dspOut(0, clkOut, data, _sound)
 				clkOut <<= 1
 			}
 
 			//strobing the digit here, which is why we took it out of the other for loop
 			data = _disp[creditMatchDisp][digit]
-			dspOut(digitStrobe, clkOut, data)
+			dspOut(digitStrobe, clkOut, data, _sound)
 			digitStrobe <<= 1                  //shifting over for the next digit
 			time.Sleep(100 * time.Microsecond) //230 ms should be 120hz to the displays?
 		}
