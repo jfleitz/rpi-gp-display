@@ -156,10 +156,10 @@ func mainDebug() {
 
 	fmt.Println("Setting player 1 = 1234, player 2 = 7654321, player 3 = 1234567, player 4 = 9080706, match = 8877 ")
 	// Load all the drivers:
-	setScore(0, 1234)
-	setScore(1, 7654321)
-	setScore(2, 1234567)
-	setScore(3, 9080706)
+	setScore(0, 0)
+	setScore(1, 10)
+	setScore(2, 100)
+	setScore(3, 1000)
 
 	printDisplays()
 
@@ -176,6 +176,13 @@ func mainDebug() {
 }
 func mainRPI() {
 	endLoop = false
+	fmt.Println("Running on rpi")
+
+	if _sound != 0x0f {
+		fmt.Printf("Playing sound %d", _sound)
+	} else {
+		fmt.Println("Not playing sound")
+	}
 
 	if _, err := host.Init(); err != nil {
 		log.Fatal(err)
@@ -195,8 +202,9 @@ func mainRPI() {
 
 	printDisplays()
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond) //wait 2 seconds before turning off.
 	if _sound != 0x0f {
+
 		_sound = 0x0f
 		endLoop = true
 		time.Sleep(20 * time.Millisecond)
@@ -321,10 +329,10 @@ func blankDisplay(dispNum int) {
 	_disp[dispNum] = [...]byte{blank, blank, blank, blank, blank, blank, blank} //initialize to blank disp
 }
 
-func numToArray(number int) ([]byte, error) {
+func numToArray(number int32) ([]byte, error) {
 	var scoreArr []byte
 
-	var remainder int
+	var remainder int32
 	tmpScore := number
 
 	for {
@@ -341,7 +349,7 @@ func numToArray(number int) ([]byte, error) {
 }
 
 //assumption is 7 digit display, so we will blank all remaining digits the score passed in didn't set
-func setScore(dispNum int, score int) {
+func setScore(dispNum int, score int32) {
 	scoreArr, _ := numToArray(score)
 
 	_disp[dispNum] = [...]byte{blank, blank, blank, blank, blank, blank, blank} //initialize to blank disp
@@ -353,7 +361,7 @@ func setScore(dispNum int, score int) {
 }
 
 //pretty sure match and ball in play are the same display (digits 4 and 3), Credit is 0 and 6
-func setBallInPlay(ball int) {
+func setBallInPlay(ball int32) {
 	ballDisp := _disp[creditMatchDisp][3:5]
 	if ball == blankScore {
 		ballDisp[0] = blank
@@ -373,7 +381,7 @@ func setBallInPlay(ball int) {
 }
 
 //for some reason GamePlan uses digit 6 and 0
-func setCredits(credit int) {
+func setCredits(credit int32) {
 
 	if credit == blankScore {
 		_disp[creditMatchDisp][creditMSD] = blank
@@ -397,7 +405,8 @@ func dispDiagnostics() {
 
 	clearDisplays()
 
-	cnt := 1111111
+	var cnt int32
+	cnt = 1111111
 
 	for i := 1; i < 10; i++ {
 		for dsp := 1; dsp < 5; dsp++ {
